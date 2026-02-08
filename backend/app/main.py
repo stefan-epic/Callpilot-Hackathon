@@ -64,12 +64,84 @@ def _extract_event_ranges(payload: Any) -> list[str]:
     end_matches = re.findall(
         r'"end"\s*:\s*\{[^}]*?"(dateTime|date)"\s*:\s*"([^"]+)"', raw
     )
-    starts = [match[1] for match in start_matches]
-    ends = [match[1] for match in end_matches]
+    start_simple = re.findall(r'"start"\s*:\s*"([^"]+)"', raw)
+    end_simple = re.findall(r'"end"\s*:\s*"([^"]+)"', raw)
+    starts = [match[1] for match in start_matches] + start_simple
+    ends = [match[1] for match in end_matches] + end_simple
     ranges: list[str] = []
     for start_value, end_value in zip(starts, ends):
         ranges.append(f"{start_value} to {end_value}")
     return ranges
+
+
+def _build_call_request_from_payload(payload: Any) -> CallRequest | None:
+    if isinstance(payload, list):
+        talk_tool: dict[str, Any] | None = None
+        calendar_payloads: list[Any] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            if item.get("valid_input") is False:
+                logger.info("Skipping invalid input item from n8n")
+                continue
+            if "talk_tool" in item and isinstance(item.get("talk_tool"), dict):
+                talk_tool = item["talk_tool"]
+                if "calendar" in item:
+                    calendar_payloads.append(item.get("calendar"))
+            if "calendar" in item and "talk_tool" not in item:
+                calendar_payloads.append(item.get("calendar"))
+            if "data" in item:
+                calendar_payloads.append(item.get("data"))
+
+        combined_calendar: Any | None = None
+        if calendar_payloads:
+            combined_calendar = (
+                calendar_payloads[0]
+                if len(calendar_payloads) == 1
+                else calendar_payloads
+            )
+
+        payload_dict = {
+            "to": talk_tool.get("to") if talk_tool else None,
+            "context": talk_tool.get("context") if talk_tool else None,
+            "callback_url": talk_tool.get("callback_url") if talk_tool else None,
+            "calendar": combined_calendar,
+        }
+        if not payload_dict["to"]:
+            return None
+        return CallRequest(**payload_dict)
+
+    if isinstance(payload, dict):
+        if payload.get("valid_input") is False:
+            return None
+        if "talk_tool" in payload and isinstance(payload.get("talk_tool"), dict):
+            talk_tool = payload["talk_tool"]
+            calendar_payloads: list[Any] = []
+            if "calendar" in payload:
+                calendar_payloads.append(payload.get("calendar"))
+            if "data" in payload:
+                calendar_payloads.append(payload.get("data"))
+            combined_calendar: Any | None = None
+            if calendar_payloads:
+                combined_calendar = (
+                    calendar_payloads[0]
+                    if len(calendar_payloads) == 1
+                    else calendar_payloads
+                )
+            payload_dict = {
+                "to": talk_tool.get("to"),
+                "context": talk_tool.get("context"),
+                "callback_url": talk_tool.get("callback_url"),
+                "calendar": combined_calendar,
+            }
+            if not payload_dict["to"]:
+                return None
+            return CallRequest(**payload_dict)
+        if "to" not in payload:
+            return None
+        return CallRequest(**payload)
+
+    raise HTTPException(status_code=422, detail="Invalid request payload")
 
 
 async def _get_elevenlabs_signed_url() -> str:
@@ -136,9 +208,13 @@ def _twilio_ulaw_to_pcm16_16k(audio_base64: str) -> str:
 
 
 @app.post("/call")
-async def place_call(payload: CallRequest) -> dict:
+async def place_call(request: Request) -> dict:
     # Twilio outbound call is triggered here.
     try:
+        payload = _build_call_request_from_payload(await request.json())
+        if payload is None:
+            logger.info("No valid talk_tool payload found; ignoring request")
+            return {"status": "ignored", "reason": "missing to"}
         logger.info(
             "Placing outbound call to=%s from=%s voice_url=%s",
             payload.to,

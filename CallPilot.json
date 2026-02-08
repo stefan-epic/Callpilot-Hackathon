@@ -1,0 +1,247 @@
+{
+  "name": "CallPilot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "3d6df2fa-ff0f-4f44-b451-b238048fed31",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        260,
+        280
+      ],
+      "webhookId": "ee1d82a7-216e-4776-b275-f3528b188782",
+      "credentials": {
+        "telegramApi": {
+          "id": "wDWlE7EYmGTMjeGB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "de.austrian#holiday@group.v.calendar.google.com",
+          "mode": "list",
+          "cachedResultName": "Feiertage in Österreich"
+        },
+        "options": {}
+      },
+      "id": "77e80831-04c7-498b-ae5f-0712c8e55d29",
+      "name": "Google Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        440
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "LRZzL9gqRPItT2pU",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://undeprecatively-degradative-maple.ngrok-free.dev/call",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "b8631da9-d791-43ba-b6e6-0e46e6d656dc",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "3255f993-b0b0-4802-bed9-6346cd82b7cc",
+      "name": "Aggregate",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "id": "51552b81-97e3-4fd8-981f-d1fe70131f04",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        700,
+        80
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "CHfaL9ydLJubIcB7",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "750035a8-e341-49cb-8c4f-9c2e945cfcd9",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1340,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Hole den rohen Text-String vom AI Agent\nconst rawOutput = $json.output;\n\n// 2. Säubere den String (entfernt eventuelle ```json Markierungen der KI)\nconst cleanOutput = rawOutput.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n\ntry {\n  // 3. Verwandle den String in ein echtes JSON-Objekt\n  const parsedData = JSON.parse(cleanOutput);\n\n  // 4. Validierung: Prüfe, ob die Telefonnummer vorhanden ist\n  const hasPhoneNumber = parsedData.talk_tool && parsedData.talk_tool.to && parsedData.talk_tool.to.length > 5;\n\n  return {\n    ...parsedData,\n    valid_input: hasPhoneNumber, // Hilfsfeld für den nächsten Filter-Node\n    error: null\n  };\n} catch (e) {\n  // Falls die KI kompletten Müll produziert hat\n  return {\n    valid_input: false,\n    error: \"Parsing failed\",\n    raw_text: rawOutput\n  };\n}"
+      },
+      "id": "9ed23ae9-2b4e-41a0-a751-04aa4a681a38",
+      "name": "Code1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "{{ $json.message.text }}",
+        "options": {
+          "systemMessage": "=You are a precision data extraction engine for CallPilot. \nYour ONLY task is to convert the user's message into a structured JSON object. \nDo not give any other response. Stick to the JSON format no matter what.\n\n### CRITICAL CONSTRAINTS:\n1. OUTPUT ONLY RAW JSON. Do not include any conversational text, explanations, or markdown formatting (no ```json).\n2. If the user provides a phone number, extract it. \n3. If NO phone number is found, use the default: \"{PHONE_NUMBER}\".\n4. Current reference date is: {{ $now.format('YYYY-MM-DD') }}.\n\n### JSON STRUCTURE TO FOLLOW:\n\n  \"calendar\": \n    \"summary\": \"Appointment: [Context]\",\n    \"start\": \"YYYY-MM-DDTHH:mm:ss\",\n    \"end\": \"YYYY-MM-DDTHH:mm:ss\"\n  ,\n  \"talk_tool\": \n    \"intent\": \"booking\",\n    \"to\": \"{PHONE_NUMBER}\",\n    \"context\": \"CONTEXT\",\n    \"callback_url\": \"[https://ta-nucleolar-conspiringly.ngrok-free.dev/webhook/aaae1901-bdeb-47d1-b804-0559fefd5dd8](https://ta-nucleolar-conspiringly.ngrok-free.dev/webhook/aaae1901-bdeb-47d1-b804-0559fefd5dd8)\""
+        }
+      },
+      "id": "43a437a0-f9b3-432a-8779-9af273f9b2fa",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        700,
+        -60
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Calendar",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1
+  },
+  "versionId": "04f4ba2e-bbe4-4a6c-97c9-d34761983935",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e3ec00fcc68a3b7ee685b47270e96e9416351ebba77c67af291e55a812488d0d"
+  },
+  "id": "VHrICm7a5fTMpgUd",
+  "tags": []
+}

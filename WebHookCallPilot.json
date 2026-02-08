@@ -1,0 +1,184 @@
+{
+  "name": "WebHookCallPilot",
+  "nodes": [
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "id": "5cbc4e8a-a100-4686-bfbd-68a9a8b7efb7",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        540
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "CHfaL9ydLJubIcB7",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aaae1901-bdeb-47d1-b804-0559fefd5dd8",
+        "options": {}
+      },
+      "id": "b40520a5-2aeb-4255-be6e-b976e38926f1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        740,
+        340
+      ],
+      "webhookId": "aaae1901-bdeb-47d1-b804-0559fefd5dd8"
+    },
+    {
+      "parameters": {
+        "chatId": "7697412941",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "id": "b0609833-eb47-405d-9038-2c67e7e51d24",
+      "name": "Telegram1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1680,
+        280
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "wDWlE7EYmGTMjeGB",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "vjv81jjj0r2gadbd98fuds7v8o@group.calendar.google.com",
+          "mode": "list",
+          "cachedResultName": "Lucas IPhone 7"
+        },
+        "start": "={{ $json.startdate }}",
+        "end": "={{ $json.enddate }}",
+        "additionalFields": {
+          "summary": "={{ $json.summary }}"
+        }
+      },
+      "id": "709535fe-feb8-4770-9f8c-d413d8cd5ee4",
+      "name": "Google Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        440
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "LRZzL9gqRPItT2pU",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.transcript }}",
+        "options": {
+          "systemMessage": "=You are the \"CallPilot Success Manager\". Your role is to analyze a phone call transcript and perform the final actions: updating the user's calendar and sending a Telegram confirmation.\n\n### REFERENCE INFO:\n* Current Date/Time: {{ $now }}\n\n### YOUR MISSION:\n1. **Analyze Transcript:** Read the transcript below. Determine if the appointment was successfully booked.\n   Transcript: {{ $json.body.transcript }}\n\n2. **On SUCCESS:**\n    - Extract Date and Start Time. \n    - MANDATORY: Format Start and End time as ISO8601 strings (YYYY-MM-DDTHH:mm:ss). If End Time is missing, add 30 minutes to Start Time.\nAnd give as output:\n    - Message: \"✅ Success! I booked your [Context] appointment. It is scheduled for [Date] at [Time]. I've added it to your Google Calendar.\"\n\n3. **On FAILURE:**\n    - Identify the reason for failure.\nGive as output: Message: \"❌ I couldn't book your appointment. Reason: [Reason]. Let me know if you want me to try again.\"\n\n### CRITICAL RULES:\n* Be concise and professional.\n\n### OUTPUT FORMAT\nPlease give as output a JSON with the following structure (Please insert corresponding values in MESSAGE, STARTDATE, ENDDATE, and SUMMARY) Summary is the Title:\nmessage: MESSAGE\nstartdate: STARTDATE\nenddate: ENDDATE\nsummary: SUMMARY"
+        }
+      },
+      "id": "ffd5a520-a01b-400b-9320-1c135def845a",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        1060,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Hole den rohen Text-String vom AI Agent\nconst rawOutput = $json.output;\n\n// 2. Säubere den String (entfernt eventuelle ```json Markierungen der KI)\nconst cleanOutput = rawOutput.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n\ntry {\n  // 3. Verwandle den String in ein echtes JSON-Objekt\n  const parsedData = JSON.parse(cleanOutput);\n\n  // 4. Validierung: Prüfe, ob die Telefonnummer vorhanden ist\n  const hasPhoneNumber = parsedData.talk_tool && parsedData.talk_tool.to && parsedData.talk_tool.to.length > 5;\n\n  return {\n    ...parsedData,\n    valid_input: hasPhoneNumber, // Hilfsfeld für den nächsten Filter-Node\n    error: null\n  };\n} catch (e) {\n  // Falls die KI kompletten Müll produziert hat\n  return {\n    valid_input: false,\n    error: \"Parsing failed\",\n    raw_text: rawOutput\n  };\n}"
+      },
+      "id": "f631b83a-4afd-47a8-a180-c63d4b1aac27",
+      "name": "Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        340
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Telegram1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "754a9931-b563-4e75-b0d1-7227215a831c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e3ec00fcc68a3b7ee685b47270e96e9416351ebba77c67af291e55a812488d0d"
+  },
+  "id": "Wl31gFru7Z3C2DyR",
+  "tags": []
+}
